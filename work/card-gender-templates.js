@@ -1,0 +1,14 @@
+(()=>{
+const ids=['card-width','card-height','card-text-scale','card-photo-scale','card-pos-y','card-font-family','card-text-color','card-show-photo-toggle','card-show-subtext-toggle','card-use-unified-title','card-unified-title-input','card-line-height','card-photo-text-gap','card-name-role-gap','card-role-country-gap'];
+const $=id=>document.getElementById(id),copy=x=>JSON.parse(JSON.stringify(x));let active=null,base=null,serial=0;
+const group=p=>window.isFemaleParticipant(p)?'female':'male';
+function capture(){const values={};for(const id of ids){const n=$(id);if(n)values[id]=n.type==='checkbox'?n.checked:n.value;}return {values,bg:window.cardCustomBg||'',color:window.cardTextColor,shiny:!!window.cardIsShiny};}
+function apply(t){for(const [id,value]of Object.entries(t.values)){const n=$(id);if(n){if(n.type==='checkbox')n.checked=value;else n.value=value;n.dataset.layoutLoaded='1';}}window.cardCustomBg=t.bg;window.appState.settings.cardCustomBg=t.bg;window.cardTextColor=t.color;window.cardIsShiny=t.shiny;}
+function templates(){const settings=window.appState.settings;base||=capture();return settings.cardGenderTemplates||=( {male:copy(base),female:copy(base)} );}
+function current(){return window.getActiveCardList().find(p=>String(p.id)===String($('card-participant-select')?.value));}
+const render=window.renderCustomCard;
+window.renderCustomCard=function(...args){const p=current();if(p){const t=templates(),next=group(p);if(active&&active!==next){t[active]=capture();apply(t[next]);}else if(!active)apply(t[next]);active=next;const label=$('card-gender-template-status');if(label)label.textContent='التنسيق الحالي: '+(next==='female'?'الإناث':'الذكور')+' — محفوظ بشكل مستقل.';}return render.apply(this,args);};
+window.saveCardGenderTemplate=function(){const p=current();if(!p)return;const category=group(p);templates()[category]=capture();active=category;window.saveDatabase();$('card-gender-template-status').textContent='تم حفظ تنسيق '+(category==='female'?'الإناث':'الذكور')+'؛ يُطبّق تلقائيًا عند العرض والطباعة والتصدير.';};
+const build=window.buildCardHTML;
+window.buildCardHTML=function(p,w,h,textScale,photoScale,posY,...rest){const t=templates();if(active)t[active]=capture();const before=capture(),target=t[group(p)];try{apply(target);const v=target.values;let result=build.call(this,p,v['card-width']||w,v['card-height']||h,v['card-text-scale']||textScale,v['card-photo-scale']||photoScale,v['card-pos-y']??posY,...rest);const cls='card-gender-export-'+(++serial);return result.replaceAll('.single-card-page','.'+cls).replace('class="single-card-page"','class="single-card-page '+cls+'"');}finally{apply(before);}};
+})();

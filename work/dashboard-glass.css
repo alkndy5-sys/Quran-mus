@@ -1,0 +1,15 @@
+
+.dashboard-charts-stage{position:relative;isolation:isolate;padding:26px;border-radius:28px;background:radial-gradient(ellipse at 8% 8%,rgba(197,160,89,.22),transparent 46%),radial-gradient(ellipse at 95% 60%,rgba(0,103,71,.19),transparent 55%),linear-gradient(135deg,#edf5f0,#f8f5ec);border:1px solid rgba(255,255,255,.9)}
+#tab-dashboard .dashboard-glass-card{background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.9);border-radius:24px;box-shadow:0 8px 32px rgba(16,65,46,.07),inset 0 1px 0 rgba(255,255,255,.95);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transition:transform .24s ease,box-shadow .24s ease,border-color .24s ease;overflow:hidden}
+#tab-dashboard .dashboard-glass-card:hover{transform:translateY(-5px);border-color:rgba(197,160,89,.55);box-shadow:0 18px 42px rgba(16,65,46,.13),inset 0 1px 0 #fff}
+.dashboard-glass-card h3{color:#164d3c;letter-spacing:.1px;padding-bottom:12px;border-bottom:1px solid rgba(0,61,36,.08)}
+.dashboard-chart-svg{overflow:visible;filter:drop-shadow(0 8px 9px rgba(0,61,36,.07))}
+.dashboard-chart-mark{transition:filter .2s ease,opacity .2s ease,transform .2s ease;transform-box:fill-box;transform-origin:center;outline:none;cursor:default}
+.dashboard-chart-mark:hover,.dashboard-chart-mark:focus-visible{filter:brightness(1.1) drop-shadow(0 3px 5px rgba(0,61,36,.3));transform:translateY(-3px) scale(1.015)}
+.dashboard-chart-svg text{pointer-events:none;font-family:Tajawal,Arial,sans-serif}
+.dashboard-glass-card li{padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.46);transition:background .2s ease,transform .2s ease}
+.dashboard-glass-card li:hover{background:rgba(255,255,255,.9);transform:translateX(-3px)}
+.dashboard-glass-card table{background:rgba(255,255,255,.38);border-radius:12px}.dashboard-glass-card tbody tr{transition:background .2s ease}.dashboard-glass-card tbody tr:hover{background:rgba(197,160,89,.12)}
+@media(max-width:640px){.dashboard-charts-stage{padding:14px;border-radius:20px}}
+@media(prefers-reduced-motion:reduce){#tab-dashboard .dashboard-glass-card,.dashboard-chart-mark,.dashboard-glass-card li{transition:none!important;transform:none!important}}
+@media print{.dashboard-charts-stage{background:#fff!important}.dashboard-glass-card{background:#fff!important;box-shadow:none!important;backdrop-filter:none!important;transform:none!important}.dashboard-chart-mark{filter:none!important;transform:none!important}}
