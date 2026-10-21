@@ -12,7 +12,7 @@ function migrate(database,db){if(!migrations.has(database))migrations.set(databa
 window.quranCrypto={encode,decode,migrate,encrypted};
 })();
 
-</script><script>(()=>{let mode='international',enter=null;try{mode=(sessionStorage.getItem('quran_active_competition')||localStorage.getItem('quran_last_competition'))==='local'?'local':'international';enter=sessionStorage.getItem('quran_enter_competition');sessionStorage.removeItem('quran_enter_competition');}catch(e){}window.quranCompetition=mode;window.quranCompetitionDatabase=mode==='local'?'quran_report_data_local':'quran_report_data';window.quranAutoEnter=enter===mode;document.documentElement.dataset.competition=mode;document.documentElement.classList.add('competition-locked');})();</script><script>window.competitionSiteOrigin="https://quran-manager-oct21-2026-v2.earthycandy64.chatgpt.site";</script>
+</script><script>(()=>{let mode='international',enter=null;try{mode=(sessionStorage.getItem('quran_active_competition')||localStorage.getItem('quran_last_competition'))==='local'?'local':'international';enter=sessionStorage.getItem('quran_enter_competition');sessionStorage.removeItem('quran_enter_competition');}catch(e){}window.quranCompetition=mode;window.quranCompetitionDatabase=mode==='local'?'quran_report_data_local':'quran_report_data';window.quranAutoEnter=enter===mode;document.documentElement.dataset.competition=mode;document.documentElement.classList.add('competition-locked');})();</script><script>window.competitionSiteOrigin="https://alkndy5-sys.github.io/Quran-mus/";</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>نظام إدارة مسابقات القرآن الكريم - وزارة الشؤون الإسلامية</title>
@@ -7081,15 +7081,15 @@ var qrcode = function() {
     const message=text=>{if($('competition-status'))$('competition-status').textContent=text;};
     const source=()=>window.appState.settings.cardDataSource==='staff'?'staff':'participants';
     const personKey=p=>source()+':'+String(p.id);
-    const tokenFor=p=>{const peers=[...(window.appState.participants||[]),...(window.appState.staffList||[])];if(!p.cardToken||peers.some(other=>other!==p&&other.cardToken===p.cardToken))p.cardToken=crypto.randomUUID().replaceAll('-','');return p.cardToken;};
+    const tokenFor=p=>{const peers=[...(window.appState.participants||[]),...(window.appState.staffList||[])];if(!/^[a-f0-9]{32}$/.test(p.cardToken||'')||peers.some(other=>other!==p&&other.cardToken===p.cardToken))p.cardToken=crypto.randomUUID().replaceAll('-','');return p.cardToken;};
     const profileData=p=>{
         const c=config();
         return {token:tokenFor(p),recordKey:personKey(p),name:p.name||'',photo:p.photo||'',country:p.country||'',role:p.jobTitle||p.branch||'',competition:{name:c.name||'',logo:c.logo||'',hotelName:c.hotelName||'',hotelAddress:c.hotelAddress||'',hotelURL:safeURL(c.hotelURL),contacts:c.contacts||'',country:c.country||'',pageBackground:c.pageBackground||'#f3f5f3',pageImage:c.pageImage||''}};
     };
     const fingerprint=data=>JSON.stringify(data);
     const published=new Map();
-    function publicOrigin(){const c=config();return safeURL(c.siteURL||window.competitionSiteOrigin||'').replace(/\/$/,'');}
-    function cardLink(p){return publicOrigin()+'/c/'+tokenFor(p);}
+    function publicOrigin(){return 'https://alkndy5-sys.github.io/Quran-mus';}
+    function cardLink(p){return publicOrigin()+'/card.html?competition='+encodeURIComponent(window.quranCompetition||'international')+'&id='+tokenFor(p);}
     const hex=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(value||'')?value:fallback;
     const bounded=(value,fallback,min,max)=>Number.isFinite(Number(value))?Math.min(max,Math.max(min,Number(value))):fallback;
     function badge(p){
@@ -7199,13 +7199,15 @@ var qrcode = function() {
     async function publishProfiles(people){
         if(!config().enabled)return;
         if(!config().name)throw Error('أكمل مسمى المسابقة في قسم تصميم بيانات المسابقة.');
-        if(location.protocol==='file:')throw Error('نشر صفحات QR يحتاج فتح النسخة المنشورة للبرنامج. صدّر نسخة قاعدة البيانات ثم استعدها في النسخة المنشورة.');
+        if(!window.currentCompetitionPermission?.('profiles.publish'))throw Error('لا تملك صلاحية نشر صفحات البطاقات.');for(const person of people)tokenFor(person);await window.quranArchiveStorage('application_state',JSON.parse(JSON.stringify(window.appState)));
         for(const person of people){
             const data=profileData(person),key=fingerprint(data);
             if(published.get(data.token)===key)continue;
             if(data.photo?.startsWith('data:'))data.photo=await compactImage(data.photo,400);
-            const response=await fetch('/api/card-profiles/'+data.token,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-            if(!response.ok){const detail=await response.text();throw Error('تعذر نشر صفحة '+person.name+': '+detail.slice(0,150));}
+            const publicData={name:data.name,photo:data.photo,country:data.country,role:data.role,competition:{...data.competition}};
+            if(publicData.competition.logo?.startsWith('data:'))publicData.competition.logo=await compactImage(publicData.competition.logo,500);
+            if(publicData.competition.pageImage?.startsWith('data:'))publicData.competition.pageImage=await compactImage(publicData.competition.pageImage,900);
+            await window.centralPublicCards.save(window.quranCompetition||'international',data.token,publicData);
             published.set(data.token,key);
         }
         await window.quranArchiveStorage('application_state',JSON.parse(JSON.stringify(window.appState)));
@@ -7575,6 +7577,9 @@ async function getBranding(mode){const document=await request(root+'/competition
 async function saveBranding(mode,headerLogo){return request(root+'/competitions/'+mode+'/assets/branding',{fields:{headerLogo:{stringValue:headerLogo}}},await token(),'PATCH');}
 window.centralBranding={get:getBranding,save:saveBranding};
 
+
+window.centralPublicCards={save:async(mode,cardToken,payload)=>{if(!['international','local'].includes(mode)||! /^[a-f0-9]{32}$/.test(cardToken))throw Error('معرّف بطاقة غير صالح.');const json=JSON.stringify(payload);if(new TextEncoder().encode(json).length>650000)throw Error('صور هذه الصفحة كبيرة جدًا. استخدم شعارًا وخلفية أصغر.');return request(root+'/competitions/'+mode+'/publicCards/'+cardToken,{fields:{payload:{stringValue:json}}},await token(),'PATCH');}};
+
 window.centralUsers={login,restore,get,list,save,remove,reset,logout};
 })();
 
@@ -7584,7 +7589,7 @@ window.centralUsers={login,restore,get,list,save,remove,reset,logout};
 const $=id=>document.getElementById(id),copy=x=>JSON.parse(JSON.stringify(x));
 const mode=window.quranCompetition,competitionName=mode==='local'?'المسابقة المحلية':'المسابقة الدولية';let current=null,opening=false;
 const tabs={dashboard:'الإحصائيات',participants:'إدارة المتسابقين',listening:'بيانات المتسابقين والمتسابقات',reports:'التقارير والاستماع',branches:'الفروع والوصف',certificates:'الشهادات','card-print':'طباعة الكروت',screens:'تصميم الشاشات',settings:'الصلاحيات والإعدادات'};
-const extras={'participants.edit':'إضافة وتعديل وحفظ أسماء المتسابقين','participants.photo':'إضافة صور المتسابقين','listening.edit':'تسجيل حالة الاستماع','reports.edit':'تعديل التقارير والجداول','branches.edit':'تعديل وصف الفروع','certificates.edit':'تصميم الشهادات وإضافة الأسماء','card-print.edit':'تعديل تصميم الكروت','card-print.photo':'إضافة صور الكروت والموظفين','card-print.staff':'إضافة أسماء الموظفين','screens.edit':'تعديل تصميم الشاشات','print':'الطباعة والتصدير','delete':'حذف سجلات من الأقسام','users.manage':'إضافة المستخدمين وتعديلهم وحذفهم','db.backup':'نسخ قاعدة البيانات','db.restore':'استعادة قاعدة البيانات','db.delete':'مسح قاعدة بيانات المسابقة','branding':'تعديل شعار وهوية المسابقة'};
+const extras={'profiles.publish':'نشر صفحات QR العامة للبطاقات','participants.edit':'إضافة وتعديل وحفظ أسماء المتسابقين','participants.photo':'إضافة صور المتسابقين','listening.edit':'تسجيل حالة الاستماع','reports.edit':'تعديل التقارير والجداول','branches.edit':'تعديل وصف الفروع','certificates.edit':'تصميم الشهادات وإضافة الأسماء','card-print.edit':'تعديل تصميم الكروت','card-print.photo':'إضافة صور الكروت والموظفين','card-print.staff':'إضافة أسماء الموظفين','screens.edit':'تعديل تصميم الشاشات','print':'الطباعة والتصدير','delete':'حذف سجلات من الأقسام','users.manage':'إضافة المستخدمين وتعديلهم وحذفهم','db.backup':'نسخ قاعدة البيانات','db.restore':'استعادة قاعدة البيانات','db.delete':'مسح قاعدة بيانات المسابقة','branding':'تعديل شعار وهوية المسابقة'};
 const roles={master:'الماستر',admin:'المدير العام',entry:'مدخل البيانات',listener:'عضو لجنة الاستماع'};
 function defaults(role){if(role==='master')return [...Object.keys(tabs).map(t=>t+'.view'),...Object.keys(extras)];if(role==='admin')return [...Object.keys(tabs).flatMap(t=>[t+'.view',t+'.edit']),...Object.keys(extras).filter(p=>p!=='db.delete')];if(role==='entry')return ['dashboard.view','participants.view','participants.edit','participants.photo','listening.view','reports.view','card-print.view','card-print.photo','card-print.staff','screens.view','print'];return ['dashboard.view','listening.view'];}
 window.competitionPermissionFor=function(account,permission){if(!account)return false;if(account.roleCode==='master')return true;if(permission==='participants.cloudRead')return (account.permissions||defaults(account.roleCode)).some(p=>['dashboard.view','participants.view','listening.view','reports.view','certificates.view','card-print.view','screens.view'].includes(p));if(permission==='db.delete')return false;if(['entry','listener'].includes(account.roleCode)&&(permission==='delete'||permission==='users.manage'))return false;return (account.permissions||defaults(account.roleCode)).includes(permission);};
@@ -7612,7 +7617,7 @@ function showApplication(){document.documentElement.classList.remove('competitio
 window.changeIdentity=value=>window.enterCompetition(value);
 const oldSwitch=window.switchTab;window.switchTab=function(id){if(id==='home'){window.returnCompetitionHome();return;}if(!current||!can(id+'.view')){if(current)denied();return;}return oldSwitch(id);};
 function actionPermission(element){if(element.dataset.accessPermission)return element.dataset.accessPermission;if(element.tagName==='CANVAS')return element.closest('#tab-screens')?'screens.edit':null;const section=element.closest('.tab-content')?.id?.replace('tab-',''),inline=['onclick','onchange','oninput','onsubmit'].map(k=>element.getAttribute(k)||'').join(' '),text=element.textContent||'';
- if(/clearAllParticipants|wipeCompetitionDatabase/.test(inline))return 'db.delete';if(/restoreDatabase/.test(inline)||element.id==='db-restore-input')return 'db.restore';if(/exportDatabase/.test(inline))return 'db.backup';if(/openUserModal|saveUser|deleteUser/.test(inline))return 'users.manage';if(/handleHeaderLogo/.test(inline))return 'branding';if(/changeIdentity/.test(inline))return null;
+ if(/publishCompetitionProfiles/.test(inline))return 'profiles.publish';if(/clearAllParticipants|wipeCompetitionDatabase/.test(inline))return 'db.delete';if(/restoreDatabase/.test(inline)||element.id==='db-restore-input')return 'db.restore';if(/exportDatabase/.test(inline))return 'db.backup';if(/openUserModal|saveUser|deleteUser/.test(inline))return 'users.manage';if(/handleHeaderLogo/.test(inline))return 'branding';if(/changeIdentity/.test(inline))return null;
  if(/delete|clearStaffList|clearReportCustomList|clearReportBgImage|removeCompetitionBackground|remove-photo/i.test(inline)||/حذف|تفريغ|إزالة الخلفية/.test(text))return 'delete';
  if(section==='card-print'&&element.tagName==='BUTTON'&&element.querySelector('img'))return 'card-print.photo';if(/chooseCardPersonPhoto|uploadCardPersonPhoto|matchStaffPhotos/.test(inline)||element.id==='card-photo-file')return 'card-print.photo';if(/handleFolderSelection/.test(inline))return 'participants.photo';
  if(/handleStaffExcelUpload|addQuickStaffMember/.test(inline))return 'card-print.staff';if(/handleExcelImport|confirmImport|saveParticipant|editParticipant|openParticipantModal/.test(inline))return 'participants.edit';if(/toggleListeningStatus|cancelListeningStatus/.test(inline))return 'listening.edit';
