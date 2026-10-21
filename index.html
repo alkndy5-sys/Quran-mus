@@ -7196,15 +7196,28 @@ var qrcode = function() {
             window.downloadFileBlob(new Blob([page],{type:'text/html;charset=utf-8'}),'صفحة مشارك - '+data.name,'html');message('حُفظت صفحة HTML محلية يمكن فتحها قبل النشر. رابط QR يحتاج النشر لاحقاً.');
         }catch(e){window.showModal('تعذر حفظ الصفحة: '+e.message);}
     };
+
+    async function resolveCardLinks(people,create){
+        const mode=window.quranCompetition||'international',kind=source();let remote=[];if(kind==='participants')remote=await window.centralParticipants.list(mode);
+        const norm=v=>window.importHeaderKey(v).replace(/[أإآ]/g,'ا');
+        for(const p of people){let identity;
+            if(kind==='participants'){let match=remote.find(r=>String(r.id)===String(p._cloudId||p.id));if(!match){const matches=remote.filter(r=>norm(r.name)===norm(p.name)&&norm(r.country)===norm(p.country)&&window.isFemaleParticipant(r)===window.isFemaleParticipant(p));if(matches.length!==1)throw Error('ارفع أسماء المتسابقين إلى Firebase ثم اجلبها قبل إصدار بطاقة «'+p.name+'».');match=matches[0];}p._cloudId=match.id;identity='participants:'+match.id;}
+            else {const key=[p.name,p.country,p.jobTitle,p.department].map(norm).join('|');if(people.filter(other=>[other.name,other.country,other.jobTitle,other.department].map(norm).join('|')===key).length>1)throw Error('يوجد موظفون ببيانات متطابقة؛ ميّز بياناتهم قبل النشر.');identity='staff:'+key;}
+            const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(identity)),key=Array.from(new Uint8Array(hash),x=>x.toString(16).padStart(2,'0')).join('');
+            p.cardToken=await window.cloudCardLinks.resolve(mode,key,tokenFor(p),create);if(!/^[a-f0-9]{32}$/.test(p.cardToken))throw Error('معرّف بطاقة سحابي غير صالح.');
+        }
+        await window.quranArchiveStorage('application_state',JSON.parse(JSON.stringify(window.appState)));
+    }
+
     async function publishProfiles(people){
         if(!config().enabled)return;
-        if(!config().name)throw Error('أكمل مسمى المسابقة في قسم تصميم بيانات المسابقة.');
+        await resolveCardLinks(people,true);if(!config().name)throw Error('أكمل مسمى المسابقة في قسم تصميم بيانات المسابقة.');
         if(!window.currentCompetitionPermission?.('profiles.publish'))throw Error('لا تملك صلاحية نشر صفحات البطاقات.');for(const person of people)tokenFor(person);await window.quranArchiveStorage('application_state',JSON.parse(JSON.stringify(window.appState)));
         for(const person of people){
             const data=profileData(person),key=fingerprint(data);
             if(published.get(data.token)===key)continue;
             if(data.photo?.startsWith('data:'))data.photo=await compactImage(data.photo,400);
-            const publicData={name:data.name,photo:data.photo,country:data.country,role:data.role,competition:{...data.competition}};
+            const previous=await window.cloudCardLinks.publicData(window.quranCompetition||'international',data.token);const publicData={name:data.name,photo:data.photo||previous?.photo||'',country:data.country,role:data.role,competition:{...data.competition}};
             if(publicData.competition.logo?.startsWith('data:'))publicData.competition.logo=await compactImage(publicData.competition.logo,500);
             if(publicData.competition.pageImage?.startsWith('data:'))publicData.competition.pageImage=await compactImage(publicData.competition.pageImage,900);
             await window.centralPublicCards.save(window.quranCompetition||'international',data.token,publicData);
@@ -7222,8 +7235,8 @@ var qrcode = function() {
             try{
                 let people=window.getActiveCardList();
                 if(['exportSingleCard','printSingleCardDirect'].includes(method)||method==='confirmAndTriggerSystemPrint'&&window.cardPreviewMode==='single')people=people.filter(p=>String(p.id)===String($('card-participant-select')?.value));
-                if(config().enabled)await saveDraftProfiles(people);
-                message('معاينة وتصدير محليان؛ روابط QR لا تعمل على الهاتف قبل نشر الصفحات.');return original.apply(this,args);
+                if(config().enabled){if(window.currentCompetitionPermission?.('profiles.publish'))await publishProfiles(people);else{await resolveCardLinks(people,false);for(const p of people)if(!await window.cloudCardLinks.publicData(window.quranCompetition||'international',p.cardToken))throw Error('صفحة «'+p.name+'» غير منشورة بعد.');}await saveDraftProfiles(people);window.renderCustomCard();}
+                message('تم التحقق من نشر صفحات QR في Firebase قبل التصدير.');return original.apply(this,args);
             }catch(e){window.showModal(e.message);}
         };
     }
@@ -7240,6 +7253,8 @@ var qrcode = function() {
         if($('competition-site-link')&&window.competitionSiteOrigin)$('competition-site-link').href=window.competitionSiteOrigin;
     }
     window.addEventListener('DOMContentLoaded',()=>{loadControls();void window.quranArchiveStorage('competition_profile_drafts').then(saved=>{drafts=Array.isArray(saved)?saved:[];renderDraftList();}).catch(e=>message('تعذر قراءة المسودات: '+e.message));});
+const saveDesign=window.saveCompetitionDesign;window.saveCompetitionDesign=async function(){const result=await saveDesign();if(result&&window.currentCompetitionPermission?.('profiles.publish'))await window.cloudCardLinks.saveSettings(window.quranCompetition||'international',config());return result;};
+window.addEventListener('competition-authenticated',async()=>{try{const saved=await window.cloudCardLinks.getSettings(window.quranCompetition||'international');if(saved){window.appState.settings.competition=saved;await window.quranArchiveStorage('application_state',JSON.parse(JSON.stringify(window.appState)));loadControls();window.renderCustomCard();}}catch(e){message('تعذر جلب إعدادات QR المشتركة: '+e.message);}});
 })();
 
 </script>
@@ -7579,6 +7594,14 @@ window.centralBranding={get:getBranding,save:saveBranding};
 
 
 window.centralPublicCards={save:async(mode,cardToken,payload)=>{if(!['international','local'].includes(mode)||! /^[a-f0-9]{32}$/.test(cardToken))throw Error('معرّف بطاقة غير صالح.');const json=JSON.stringify(payload);if(new TextEncoder().encode(json).length>650000)throw Error('صور هذه الصفحة كبيرة جدًا. استخدم شعارًا وخلفية أصغر.');return request(root+'/competitions/'+mode+'/publicCards/'+cardToken,{fields:{payload:{stringValue:json}}},await token(),'PATCH');}};
+
+
+window.cloudCardLinks={
+ getSettings:async mode=>{const doc=await request(root+'/competitions/'+mode+'/assets/qrSettings',undefined,await token(),'GET',true);return doc?JSON.parse(doc.fields.payload.stringValue):null;},
+ saveSettings:async(mode,value)=>request(root+'/competitions/'+mode+'/assets/qrSettings',{fields:{payload:{stringValue:JSON.stringify(value)}}},await token(),'PATCH'),
+ resolve:async(mode,key,proposed,create)=>{const url=root+'/competitions/'+mode+'/cardLinks/'+key,auth=await token();let doc=await request(url,undefined,auth,'GET',true);if(doc)return profile(doc).token;if(!create)throw Error('البطاقة غير منشورة بعد. اطلب من المسؤول نشرها أولًا.');try{await request(url+'?currentDocument.exists=false',{fields:{token:{stringValue:proposed}}},auth,'PATCH');return proposed;}catch(e){doc=await request(url,undefined,auth,'GET',true);if(doc)return profile(doc).token;throw e;}},
+ publicData:async(mode,id)=>{const doc=await request(root+'/competitions/'+mode+'/publicCards/'+id,undefined,undefined,'GET',true);return doc?JSON.parse(doc.fields.payload.stringValue):null;}
+};
 
 window.centralUsers={login,restore,get,list,save,remove,reset,logout};
 })();
