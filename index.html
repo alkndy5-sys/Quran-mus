@@ -581,7 +581,7 @@ body>footer{background:#073729!important;border-top:2px solid #c5a05988!importan
                 <h2 class="text-lg font-bold text-gray-800 mb-2">معلومات المتسابقين</h2>
                 <p class="text-xs text-gray-500 mb-6">ابحث وصفِّ بيانات المتسابقين والمتسابقات، واعرض الصور والتفاصيل، واطبع النتائج أو صدّر القائمة المعروضة إلى Excel.</p>
 
-                <div class="flex flex-wrap gap-2 mb-4"><button type="button" onclick="window.printCurrentListeningList()" class="bg-brand-darkGreen text-white px-4 py-2 rounded-lg text-xs">طباعة القائمة المعروضة (عرضي)</button><button type="button" onclick="window.exportInformationExcel()" class="bg-brand-gold text-white px-4 py-2 rounded-lg text-xs">تصدير القائمة المعروضة إلى Excel</button></div><div class="mb-4">
+                <div class="flex flex-wrap gap-2 mb-4"><button type="button" onclick="window.printCurrentListeningList()" class="bg-brand-darkGreen text-white px-4 py-2 rounded-lg text-xs">طباعة القائمة المعروضة (عرضي)</button><button type="button" onclick="window.exportInformationExcel()" class="bg-brand-gold text-white px-4 py-2 rounded-lg text-xs">تصدير القائمة المعروضة إلى Excel</button><button type="button" data-access-permission="participants.photo" onclick="window.openParticipantPhotoLinker()" class="bg-brand-darkGreen text-white px-4 py-2 rounded-lg text-xs">استعراض وربط صور المتسابقين من مجلد تلقائياً</button></div><div class="mb-4">
                     <input type="text" id="listening-search" oninput="window.renderListeningList()" placeholder="ابحث بالاسم العربي أو الإنجليزي أو الدولة أو المسابقة..." class="w-full md:w-1/3 text-xs p-2 border border-gray-300 rounded-lg">
                 </div>
 
@@ -7720,6 +7720,87 @@ window.loadCompetitionLogoFirebase=async()=>{if(busy)return;busy=true;try{status
 window.handleHeaderLogoUpload=async event=>{const file=event.target.files?.[0];if(!file)return;try{const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.readAsDataURL(file);});await window.saveCompetitionLogoFirebase(data);}catch(e){window.showModal(e.message);}finally{event.target.value='';}};
 window.addEventListener('competition-authenticated',()=>void window.loadCompetitionLogoFirebase());
 window.addEventListener('DOMContentLoaded',()=>{const panel=document.createElement('div');panel.className='bg-white p-4 border rounded-xl space-y-2';panel.innerHTML='<h3 class="font-bold">شعار المسابقة في Firebase</h3><p class="text-xs text-gray-500">شعار مستقل لكل مسابقة. يظهر في الترويسة والصفحة الرئيسية على الأجهزة الأخرى. تغيير الشعار من الترويسة يرفعه مباشرة.</p><div class="flex flex-wrap gap-2"><button type="button" data-access-permission="branding" onclick="window.saveCompetitionLogoFirebase()" class="bg-brand-darkGreen text-white px-4 py-2 rounded">رفع الشعار الحالي إلى Firebase</button><button type="button" data-access-permission="settings.view" onclick="window.loadCompetitionLogoFirebase()" class="border px-4 py-2 rounded">جلب الشعار من Firebase</button></div><p id="cloud-branding-status" role="status" class="text-xs"></p>'; $('tab-settings')?.append(panel);void refreshTiles();});
+})();
+
+</script>
+<script>
+(()=>{
+const folderUrl='https://drive.google.com/drive/folders/1AuFsnNd0rZtKYG9HlkWDnZu-tYAX9cpq?usp=drive_link';
+const imageFile=name=>/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(name||'');
+const normalized=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[\u064b-\u065f\u0670\u0640]/g,'').replace(/[أإآٱ]/g,'ا').replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-1632)).replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-1776)).replace(/[^\p{L}\p{N}]/gu,'');
+const stem=name=>String(name||'').replace(/\.[^.]+$/,'');
+const companionFolder=path=>String(path||'').split('/').slice(0,-1).some(p=>/^(المرافقين|المرافقات|مرافقين|مرافق|companions)$/i.test(p.trim()));
+function planPhotos(people,files){
+ const index=new Map();for(const p of people){for(const alias of new Set([p.id,p._cloudId,p.name,window.importedEnglishName(p)].map(normalized).filter(Boolean))){const bucket=index.get(alias)||new Set();bucket.add(p);index.set(alias,bucket);}}
+ const rows=files.map(file=>{const candidates=[...(index.get(normalized(stem(file.name)))||[])];return {file,person:candidates.length===1?candidates[0]:null,reason:candidates.length>1?'الاسم مكرر بين المتسابقين':candidates.length===0?'لا يوجد اسم مطابق':'',ambiguous:candidates.length>1};});
+ const used=new Map();for(const row of rows)if(row.person)used.set(row.person,(used.get(row.person)||0)+1);
+ for(const row of rows)if(row.person&&used.get(row.person)>1){row.reason='أكثر من صورة مطابقة لهذا المتسابق';row.ambiguous=true;row.person=null;}
+ return rows;
+}
+function driveFolder(value){const url=new URL(value);if(url.protocol!=='https:'||url.hostname!=='drive.google.com')throw Error('أدخل رابط مجلد Google Drive الصحيح.');const id=url.pathname.match(/\/folders\/([\w-]+)/)?.[1];if(!id)throw Error('الرابط يجب أن يكون لمجلد، وليس لصورة منفردة.');return {id,resourceKey:url.searchParams.get('resourcekey')||''};}
+function allowed(){return !!window.currentCompetitionPermission?.('participants.photo');}
+const copy=value=>JSON.parse(JSON.stringify(value));
+function node(tag,text,parent){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(parent)parent.append(n);return n;}
+function button(text,parent,action){const n=node('button',text,parent);n.type='button';n.className='border rounded-lg px-4 py-2 text-sm';n.dataset.accessPermission='participants.photo';n.onclick=action;return n;}
+function label(text,parent){const n=node('label',undefined,parent);n.style.cssText='display:flex;align-items:center;gap:8px;margin:10px 0';const input=node('input',undefined,n);input.type='checkbox';node('span',text,n);input.dataset.accessPermission='participants.photo';return input;}
+async function fetchDrive(url,headers,signal){const response=await fetch(url,{headers,signal,credentials:'omit',referrerPolicy:'strict-origin-when-cross-origin'});if(!response.ok){let reason='';try{const error=await response.json();reason=error.error?.errors?.[0]?.reason||error.error?.status||'';}catch{}if(response.status===403)throw Error('تعذر الوصول إلى Drive. تأكد من تفعيل Google Drive API وصلاحية مفتاح الاتصال ومشاركة المجلد وصوره مع من لديه الرابط. '+reason);if(response.status===404)throw Error('المجلد أو الصورة غير متاحين للرابط.');throw Error('تعذر قراءة Drive ('+response.status+'). '+reason);}return response;}
+async function driveFiles(folder,key,skipCompanions,signal,onProgress){
+ if(!key.trim())throw Error('أدخل مفتاح اتصال Google Drive API في إعداد الاتصال، أو نزّل المجلد واستخدم اختيار مجلد الجهاز.');
+ const queue=[{...folder,path:''}],seen=new Set(),files=[];
+ while(queue.length){const current=queue.shift();if(seen.has(current.id))continue;seen.add(current.id);if(seen.size>200)throw Error('المجلد كبير جدًا؛ اختر مجلد صور المتسابقين مباشرة.');let page='';do{
+  const params=new URLSearchParams({key:key.trim(),q:"'"+current.id+"' in parents and trashed = false",fields:'nextPageToken,incompleteSearch,files(id,name,mimeType,size,resourceKey)',pageSize:'1000',supportsAllDrives:'true',includeItemsFromAllDrives:'true'});if(page)params.set('pageToken',page);
+  const headers={};if(current.resourceKey)headers['X-Goog-Drive-Resource-Keys']=current.id+'/'+current.resourceKey;
+  const data=await (await fetchDrive('https://www.googleapis.com/drive/v3/files?'+params,headers,signal)).json();if(data.incompleteSearch)throw Error('لم تكتمل قراءة المجلد؛ اختر مجلدًا أصغر وأعد المحاولة.');
+  for(const f of data.files||[]){const full=current.path+f.name;if(f.mimeType==='application/vnd.google-apps.folder'){if(!skipCompanions||!companionFolder(full+'/x'))queue.push({...f,path:full+'/'});}else if(imageFile(f.name)&&(!skipCompanions||!companionFolder(full))){files.push({...f,path:full,drive:true});if(files.length>10000)throw Error('عدد الصور كبير جدًا؛ اختر مجلدًا أصغر.');}}
+  onProgress('قراءة المجلد… '+files.length+' صورة');page=data.nextPageToken||'';
+ }while(page);}
+ return files;
+}
+async function photoData(blob){
+ if(blob.size>30*1024*1024)throw Error('الصورة أكبر من 30 ميجابايت.');const url=URL.createObjectURL(blob);try{const img=new Image();img.src=url;await img.decode();if(!img.naturalWidth||!img.naturalHeight)throw Error('ملف الصورة غير صالح.');const factor=Math.min(1,1200/Math.max(img.naturalWidth,img.naturalHeight)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*factor));canvas.height=Math.max(1,Math.round(img.naturalHeight*factor));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);let value=canvas.toDataURL('image/webp',.88);if(!value.startsWith('data:image/webp'))value=canvas.toDataURL('image/png');if(value.length>2000000)throw Error('الصورة كبيرة بعد التجهيز؛ استخدم صورة أصغر.');return value;}finally{URL.revokeObjectURL(url);}
+}
+window.openParticipantPhotoLinker=function(){
+ if(!allowed())return window.showModal('لا تملك صلاحية إضافة صور المتسابقين.');if(!(window.appState.participants||[]).length)return window.showModal('اجلب أسماء المتسابقين أو استوردها أولًا.');
+ const competition=window.quranCompetition,dialog=node('dialog');dialog.dir='rtl';dialog.style.cssText='width:1000px;max-width:96vw;max-height:92vh;border:1px solid #c5a059;border-radius:18px;padding:24px;color:#173d30;overflow:auto';
+ const controller=new AbortController(),urls=[];let rows=[],busy=false,closed=false;const controls=[];
+ node('h2','ربط صور المتسابقين تلقائيًا',dialog).style.cssText='font-size:22px;font-weight:bold;margin-bottom:12px';
+ node('p','سمِّ كل صورة بالاسم العربي أو الإنجليزي الكامل، أو معرّف المتسابق. تشمل المطابقة جميع أسماء المسابقة الحالية، وتُترك الحالات المكررة للمراجعة.',dialog);
+ const toolbar=node('div',undefined,dialog);toolbar.style.cssText='display:flex;gap:10px;flex-wrap:wrap;margin:16px 0';
+ const input=node('input',undefined,dialog);input.type='file';input.multiple=true;input.setAttribute('webkitdirectory','');input.accept='image/*';input.hidden=true;input.dataset.accessPermission='participants.photo';
+ controls.push(button('استعراض مجلد من الجهاز',toolbar,()=>input.click()));
+ const drive=node('details',undefined,dialog);node('summary','أو ربط الصور من مجلد Google Drive',drive).style.cssText='cursor:pointer;font-weight:bold;padding:10px 0';
+ const driveLabel=node('label','رابط المجلد',drive),driveInput=node('input',undefined,driveLabel);driveInput.type='url';driveInput.value=folderUrl;driveInput.style.cssText='display:block;width:100%;padding:10px;border:1px solid #bbb;border-radius:8px;direction:ltr';driveInput.dataset.accessPermission='participants.photo';
+ const setup=node('details',undefined,drive);node('summary','إعداد الاتصال بـ Google Drive',setup);node('p','للربط المباشر: استخدم مفتاح API لمشروع فُعّلت فيه Google Drive API، ويُسمح له بالعمل من عنوان موقعك. يجب أن يكون المجلد وصوره متاحين لمن لديه الرابط. يمكنك بدلًا من ذلك تنزيل المجلد وفك ضغطه ثم اختياره من الجهاز. لا تُدخل كلمة مرور حساب Google.',setup);
+ const keyInput=node('input',undefined,setup);keyInput.type='password';keyInput.autocomplete='off';keyInput.placeholder='مفتاح Google Drive API';keyInput.style.cssText='width:100%;border:1px solid #bbb;padding:8px;direction:ltr';keyInput.dataset.accessPermission='participants.photo';
+ node('p','يُستخدم المفتاح لهذه النافذة فقط ولا يُحفظ في قاعدة البيانات.',setup).style.fontSize='12px';
+ controls.push(button('قراءة الصور من Drive',drive,async()=>{try{setBusy(true);renderRows([]);const files=await driveFiles(driveFolder(driveInput.value),keyInput.value,skip.checked,controller.signal,status);if(!closed)renderRows(planPhotos(window.appState.participants,files));}catch(e){if(!closed)status(e.message);}finally{setBusy(false);}}));
+ const skip=label('تجاهل مجلدات المرافقين',dialog);skip.checked=true;const replace=label('السماح باستبدال الصور الموجودة',dialog);const report=node('p','اختر المجلد لعرض نتيجة المطابقة قبل الحفظ.',dialog);report.setAttribute('role','status');report.style.cssText='margin:12px 0;font-weight:bold';
+ const result=node('div',undefined,dialog);result.style.cssText='max-height:40vh;overflow:auto;border:1px solid #ddd;border-radius:10px';
+ const actions=node('div',undefined,dialog);actions.style.cssText='display:flex;gap:10px;margin-top:16px';
+ const apply=button('اعتماد وربط الصور المحددة',actions,applyPhotos);apply.disabled=true;const close=button('إغلاق',actions,()=>dialog.close());
+ node('p','تُحفظ نسخ الصور داخل هذا المتصفح للمسابقة الحالية، وتظهر في الشاشات والبطاقات والشهادات. رفع الأسماء إلى Firebase لا يرفع هذه الصور.',dialog).style.cssText='font-size:12px;margin-top:14px;color:#666';
+ function status(text){report.textContent=text;}
+ function setBusy(value){busy=value;for(const el of [...controls,apply,input,replace,skip,driveInput,keyInput])el.disabled=value;close.textContent=value?'إلغاء وإغلاق':'إغلاق';if(!value)updateSelection();}
+ function updateSelection(){let count=0;for(const row of rows){if(!row.box)continue;const blocked=!!row.person.photo&&!replace.checked;row.box.disabled=busy||blocked;if(blocked)row.box.checked=false;if(row.box.checked)count++;}apply.disabled=busy||count===0;apply.textContent='اعتماد وربط الصور المحددة ('+count+')';}
+ function renderRows(next){for(const url of urls.splice(0))URL.revokeObjectURL(url);rows=next;result.replaceChildren();const matched=rows.filter(r=>r.person).length,linked=new Set(rows.filter(r=>r.person).map(r=>r.person));status('الصور: '+rows.length+' | مطابقة: '+matched+' | دون تطابق أو مكررة: '+(rows.length-matched)+' | متسابقون بلا تطابق: '+((window.appState.participants||[]).length-linked.size));
+  const table=node('table',undefined,result);table.style.cssText='width:100%;border-collapse:collapse;font-size:13px';const heading=node('tr',undefined,node('thead',undefined,table));for(const title of ['ربط','الصورة','الملف','المتسابق / النتيجة'])node('th',title,heading).style.padding='10px';const body=node('tbody',undefined,table);
+  for(const row of rows){const tr=node('tr',undefined,body);tr.style.borderTop='1px solid #ddd';const selection=node('td',undefined,tr);if(row.person){row.box=node('input',undefined,selection);row.box.type='checkbox';row.box.checked=!row.person.photo;row.box.dataset.accessPermission='participants.photo';row.box.onchange=updateSelection;row.box.setAttribute('aria-label','ربط صورة '+row.person.name);}
+   const imageCell=node('td',undefined,tr);if(!row.file.drive){const image=node('img',undefined,imageCell),url=URL.createObjectURL(row.file);urls.push(url);image.src=url;image.loading='lazy';image.alt=row.file.name;image.style.cssText='width:50px;height:65px;object-fit:contain';}else imageCell.textContent='Drive';node('td',row.file.path||row.file.webkitRelativePath||row.file.name,tr).style.overflowWrap='anywhere';node('td',row.person?(row.person.name+(row.person.photo?' — توجد صورة حاليًا':'')):row.reason,tr);
+  }updateSelection();
+ }
+ replace.onchange=()=>{for(const row of rows)if(row.box)row.box.checked=replace.checked||!row.person.photo;updateSelection();};
+ input.onchange=()=>{const files=Array.from(input.files||[]).filter(f=>imageFile(f.name)&&(!skip.checked||!companionFolder(f.webkitRelativePath)));renderRows(planPhotos(window.appState.participants,files));input.value='';};
+ async function applyPhotos(){
+  if(busy||!allowed())return;const chosen=rows.filter(r=>r.box?.checked&&!r.box.disabled);if(!chosen.length)return;const before=JSON.stringify(window.appState.participants||[]),changes=new Map();setBusy(true);
+  try{for(const [i,row]of chosen.entries()){if(closed||!allowed()||competition!==window.quranCompetition)throw Error('أُلغيت العملية أو انتهت صلاحية إضافة الصور.');status('تجهيز الصور '+(i+1)+' من '+chosen.length+'…');let blob=row.file;if(row.file.drive){if(Number(row.file.size)>30*1024*1024)throw Error('الصورة «'+row.file.name+'» أكبر من 30 ميجابايت.');const headers={};if(row.file.resourceKey)headers['X-Goog-Drive-Resource-Keys']=row.file.id+'/'+row.file.resourceKey;const url='https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(row.file.id)+'?alt=media&key='+encodeURIComponent(keyInput.value.trim());blob=await (await fetchDrive(url,headers,controller.signal)).blob();}try{changes.set(row.person,await photoData(blob));}catch(e){throw Error(row.file.name+': '+e.message);}}
+   if(closed||!allowed()||competition!==window.quranCompetition)throw Error('أُلغيت العملية؛ لم تُحفظ الصور.');if(JSON.stringify(window.appState.participants)!==before)throw Error('تغيرت قائمة المتسابقين أثناء التجهيز. أعد المطابقة لحفظ الصور مع أحدث بيانات.');
+   const next=window.appState.participants.map(p=>changes.has(p)?{...p,photo:changes.get(p),photoCrop:null}:p);await window.quranArchiveStorage('application_state',copy({...window.appState,participants:next}));
+   if(closed||!allowed()||competition!==window.quranCompetition||JSON.stringify(window.appState.participants)!==before){await window.quranArchiveStorage('application_state',copy(window.appState));throw Error('تغيرت البيانات أو أُلغيت العملية أثناء الحفظ؛ تم الاحتفاظ ببياناتك السابقة.');}
+   window.appState.participants=next;window.renderAll();rows=[];result.replaceChildren();status('تم ربط وحفظ '+changes.size+' صورة بنجاح.');
+  }catch(e){if(!closed)status('لم تُحفظ الصور: '+e.message);}finally{setBusy(false);}
+ }
+ dialog.addEventListener('close',()=>{closed=true;controller.abort();for(const url of urls)URL.revokeObjectURL(url);keyInput.value='';dialog.remove();},{once:true});document.body.append(dialog);dialog.showModal();
+};
 })();
 
 </script>
