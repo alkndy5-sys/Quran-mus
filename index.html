@@ -7615,6 +7615,10 @@ window.cloudCardLinks={
  publicData:async(mode,id)=>{const doc=await request(root+'/competitions/'+mode+'/publicCards/'+id,undefined,undefined,'GET',true);return doc?JSON.parse(doc.fields.payload.stringValue):null;}
 };
 
+window.centralDriveSettings={
+ get:async mode=>{if(!['international','local'].includes(mode))throw Error('مسابقة غير صالحة.');const doc=await request(root+'/competitions/'+mode+'/assets/driveSettings',undefined,await token(),'GET',true);return doc?profile(doc):null;},
+ save:async(mode,value)=>{if(!['international','local'].includes(mode))throw Error('مسابقة غير صالحة.');return request(root+'/competitions/'+mode+'/assets/driveSettings',{fields:{apiKey:{stringValue:value.apiKey},folderUrl:{stringValue:value.folderUrl}}},await token(),'PATCH');}
+};
 window.centralUsers={login,restore,get,list,save,remove,reset,logout};
 })();
 
@@ -7772,7 +7776,10 @@ window.openParticipantPhotoLinker=function(){
  const driveLabel=node('label','رابط المجلد',drive),driveInput=node('input',undefined,driveLabel);driveInput.type='url';driveInput.value=folderUrl;driveInput.style.cssText='display:block;width:100%;padding:10px;border:1px solid #bbb;border-radius:8px;direction:ltr';driveInput.dataset.accessPermission='participants.photo';
  const setup=node('details',undefined,drive);node('summary','إعداد الاتصال بـ Google Drive',setup);node('p','للربط المباشر: استخدم مفتاح API لمشروع فُعّلت فيه Google Drive API، ويُسمح له بالعمل من عنوان موقعك. يجب أن يكون المجلد وصوره متاحين لمن لديه الرابط. يمكنك بدلًا من ذلك تنزيل المجلد وفك ضغطه ثم اختياره من الجهاز. لا تُدخل كلمة مرور حساب Google.',setup);
  const keyInput=node('input',undefined,setup);keyInput.type='password';keyInput.autocomplete='off';keyInput.placeholder='مفتاح Google Drive API';keyInput.style.cssText='width:100%;border:1px solid #bbb;padding:8px;direction:ltr';keyInput.dataset.accessPermission='participants.photo';
- node('p','يُستخدم المفتاح لهذه النافذة فقط ولا يُحفظ في قاعدة البيانات.',setup).style.fontSize='12px';
+ node('p','يمكن حفظ المفتاح ورابط المجلد في Firebase لهذه المسابقة واستعادتهما على الأجهزة الأخرى للحسابات المصرح لها بإضافة الصور.',setup).style.fontSize='12px';
+ const connectionStatus=node('p','',setup);connectionStatus.setAttribute('role','status');connectionStatus.style.fontSize='12px';
+ controls.push(button('حفظ إعداد الاتصال في Firebase',setup,()=>connectionSettings(true)));
+ controls.push(button('جلب إعداد الاتصال المحفوظ',setup,()=>connectionSettings(false)));
  controls.push(button('قراءة الصور من Drive',drive,async()=>{try{setBusy(true);renderRows([]);const files=await driveFiles(driveFolder(driveInput.value),keyInput.value,skip.checked,controller.signal,status);if(!closed)renderRows(planPhotos(window.appState.participants,files));}catch(e){if(!closed)status(e.message);}finally{setBusy(false);}}));
  const skip=label('تجاهل مجلدات المرافقين',dialog);skip.checked=true;const replace=label('السماح باستبدال الصور الموجودة',dialog);const report=node('p','اختر المجلد لعرض نتيجة المطابقة قبل الحفظ.',dialog);report.setAttribute('role','status');report.style.cssText='margin:12px 0;font-weight:bold';
  const result=node('div',undefined,dialog);result.style.cssText='max-height:40vh;overflow:auto;border:1px solid #ddd;border-radius:10px';
@@ -7799,7 +7806,14 @@ window.openParticipantPhotoLinker=function(){
    window.appState.participants=next;window.renderAll();rows=[];result.replaceChildren();status('تم ربط وحفظ '+changes.size+' صورة بنجاح.');
   }catch(e){if(!closed)status('لم تُحفظ الصور: '+e.message);}finally{setBusy(false);}
  }
- dialog.addEventListener('close',()=>{closed=true;controller.abort();for(const url of urls)URL.revokeObjectURL(url);keyInput.value='';dialog.remove();},{once:true});document.body.append(dialog);dialog.showModal();
+ dialog.addEventListener('close',()=>{closed=true;controller.abort();for(const url of urls)URL.revokeObjectURL(url);keyInput.value='';dialog.remove();},{once:true});document.body.append(dialog);dialog.showModal();void connectionSettings(false);
+ async function connectionSettings(save){
+  if(busy||closed||!allowed())return;setBusy(true);connectionStatus.textContent=save?'جارٍ حفظ إعداد الاتصال…':'جارٍ جلب إعداد الاتصال المحفوظ…';
+  try{if(!window.centralDriveSettings)throw Error('حدّث نسخة الموقع أولًا.');
+   if(save){driveFolder(driveInput.value.trim());const apiKey=keyInput.value.trim();if(!/^[A-Za-z0-9_-]{20,200}$/.test(apiKey))throw Error('أدخل مفتاح API الصحيح أولًا.');await window.centralDriveSettings.save(competition,{apiKey,folderUrl:driveInput.value.trim()});if(!closed)connectionStatus.textContent='تم حفظ المفتاح ورابط المجلد في Firebase لهذه المسابقة.';}
+   else{const initialKey=keyInput.value,initialFolder=driveInput.value;const value=await window.centralDriveSettings.get(competition);if(closed||!allowed()||competition!==window.quranCompetition)return;if(value){if(keyInput.value===initialKey)keyInput.value=value.apiKey||'';if(driveInput.value===initialFolder)driveInput.value=value.folderUrl||folderUrl;connectionStatus.textContent='تم جلب إعداد الاتصال المحفوظ؛ يمكنك قراءة الصور من Drive.';}else connectionStatus.textContent='لا يوجد إعداد محفوظ لهذه المسابقة؛ أدخل المفتاح واحفظه مرة واحدة.';}
+  }catch(e){if(!closed){setup.open=true;connectionStatus.textContent='تعذر '+(save?'حفظ':'جلب')+' إعداد الاتصال: '+e.message+' — تأكد من نشر قواعد Firebase المحدّثة.';}}finally{if(!closed)setBusy(false);}
+ }
 };
 })();
 
